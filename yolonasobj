@@ -1,0 +1,100 @@
+import torch
+
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+MODEL_ARCH = 'yolo_nas_l'
+#Load Pretrained YOLO-NAS Model
+from super_gradients.training import models
+
+model = models.get(MODEL_ARCH, pretrained_weights="coco").to(DEVICE)
+#Inference Example (Optional Test Image)
+import cv2
+import supervision as sv
+
+SOURCE_IMAGE_PATH = "/content/test.jpg"
+image = cv2.imread(SOURCE_IMAGE_PATH)
+
+result = list(model.predict(image, conf=0.35))[0]
+
+detections = sv.Detections(
+    xyxy=result.prediction.bboxes_xyxy,
+    confidence=result.prediction.confidence,
+    class_id=result.prediction.labels.astype(int)
+)
+
+box_annotator = sv.BoxAnnotator()
+labels = [
+    f"{result.class_names[class_id]} {confidence:0.2f}"
+    for _, _, confidence, class_id, _ in detections
+]
+
+annotated = box_annotator.annotate(
+    scene=image.copy(),
+    detections=detections,
+    labels=labels
+)
+
+sv.plot_image(annotated, (12, 12))
+# Prepare Custom Dataset
+Ensure the dataset is in YOLO format:
+/YourDataset
+├── train/images, train/labels
+├── valid/images, valid/labels
+├── test/images, test/labels
+└── data.yaml
+
+Example data.yaml:
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+nc: 2
+names: ['vehicle', 'person']
+# Set Parameters for Fine-tuning
+EXPERIMENT_NAME = "YOLO_NAS_UAV"
+CHECKPOINT_DIR = "/content/checkpoints"
+DATASET_PATH = "/content/YourDataset"
+CLASSES = ['vehicle', 'person']
+BATCH_SIZE = 8
+MAX_EPOCHS = 25
+# Load Dataset
+from super_gradients.training.dataloaders.dataloaders import (
+    coco_detection_yolo_format_train, coco_detection_yolo_format_val)
+
+train_data = coco_detection_yolo_format_train(...)
+val_data = coco_detection_yolo_format_val(...)
+test_data = coco_detection_yolo_format_val(...)
+# Define Model and Training Config
+from super_gradients.training import Trainer
+from super_gradients.training.losses import PPYoloELoss
+from super_gradients.training.metrics import DetectionMetrics_050
+from super_gradients.training.models.detection_models.pp_yolo_e import PPYoloEPostPredictionCallback
+
+trainer = Trainer(...)
+model = models.get(...)
+train_params = {...}
+# Train the Model
+trainer.train(
+    model=model,
+    training_params=train_params,
+    train_loader=train_data,
+    valid_loader=val_data
+)
+# Evaluate on Test Data
+best_model = models.get(...)
+trainer.test(
+    model=best_model,
+    test_loader=test_data,
+    test_metrics_list=...
+)
+11. Visualize Predictions
+from supervision import Dataset
+
+ds = Dataset.from_yolo(...)
+predictions = {}
+for img_name, img in ds.images.items():
+    ...
+    predictions[img_name] = detections
+
+import random
+random.seed(10)
+...
+sv.plot_images_grid(...)
