@@ -1,42 +1,60 @@
-import argparse
-import sys
+import matplotlib.pyplot as plt
 import numpy as np
-sys.path.append('.')
 
-from video_funcs import default_aggregation_func
-from metrics import mean_class_accuracy
+# Dataset-specific metrics
+datasets = {
+    'UAV123': {
+        'models': ['SORT', 'DSORT', 'MCMOT', 'Videotrack', 'TransRMOT', 'UCMCTrack', 'Proposed'],
+        'mota': [72.63, 72.79, 92.76, 92.84, 91.42, 93.69, 94.53],
+        'ids': [3568, 3483, 1202, 1183, 1256, 1102, 906]
+    },
+    'VisDrone': {
+        'models': ['GOG', 'IOUT', 'UAVMOT', 'MCMOT', 'TransRMOT', 'Videotrack', 'UCMCTrack', 'Proposed'],
+        'mota': [28.7, 28.1, 36.1, 38.2, 36.4, 38.8, 39.0, 39.6],
+        'ids': [1387, 2393, 2775, 2520, 2678, 2331, 2195, 1989]
+    },
+    'UAVDT': {
+        'models': ['SORT', 'DSORT', 'UAVMOT', 'MCMOT', 'TransRMOT', 'Videotrack', 'UCMCTrack', 'Proposed'],
+        'mota': [39.0, 40.7, 46.4, 48.8, 48.7, 47.9, 49.1, 49.3],
+        'ids': [2350, 2061, 456, 320, 323, 358, 299, 291]
+    }
+}
 
-parser = argparse.ArgumentParser()
-parser.add_argument('score_files', nargs='+', type=str)
-parser.add_argument('--score_weights', nargs='+', type=float, default=None)
-parser.add_argument('--crop_agg', type=str, choices=['max', 'mean'], default='mean')
-args = parser.parse_args()
+# Set up a 2x3 grid of subplots
+fig, axes = plt.subplots(2, 3, figsize=(18, 8))
+#fig.suptitle("MOTA and IDSwitch Comparison Across UAV Datasets", fontsize=18)
 
-score_npz_files = [np.load(x) for x in args.score_files]
+# Loop through datasets
+for idx, (dataset, data) in enumerate(datasets.items()):
+    x = np.arange(len(data['models']))
 
-if args.score_weights is None:
-    score_weights = [1] * len(score_npz_files)
-else:
-    score_weights = args.score_weights
-    if len(score_weights) != len(score_npz_files):
-        raise ValueError("Only {} weight specifed for a total of {} score files"
-                         .format(len(score_weights), len(score_npz_files)))
+    # MOTA subplot (top row)
+    ax_mota = axes[0, idx]
+    bars_mota = ax_mota.bar(x, data['mota'], color='tab:blue')
+    ax_mota.set_title(f"{dataset} - MOTA", fontsize=11)
+    ax_mota.set_ylim(0, 105)
+    ax_mota.set_xticks(x)
+    ax_mota.set_xticklabels(data['models'], rotation=30, ha='right', fontsize=7)  # smaller font size
+    ax_mota.set_ylabel('MOTA (%)' if idx == 0 else '')
+    ax_mota.grid(axis='y', linestyle='--', alpha=0.5)
 
-score_list = [x['scores'][:, 0] for x in score_npz_files]
-label_list = [x['labels'] for x in score_npz_files]
+    for j, bar in enumerate(bars_mota):
+        ax_mota.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
+                     f"{data['mota'][j]:.1f}", ha='center', fontsize=7)
 
-# label verification
+    # IDSwitch subplot (bottom row)
+    ax_ids = axes[1, idx]
+    bars_ids = ax_ids.bar(x, data['ids'], color='tab:orange')
+    ax_ids.set_title(f"{dataset} - IDSwitch", fontsize=11)
+    ax_ids.set_ylim(0, max(data['ids']) + 500)
+    ax_ids.set_xticks(x)
+    ax_ids.set_xticklabels(data['models'], rotation=30, ha='right', fontsize=7)  # smaller font size
+    ax_ids.set_ylabel('ID Switches' if idx == 0 else '')
+    ax_ids.grid(axis='y', linestyle='--', alpha=0.5)
 
-# score_aggregation
-agg_score_list = []
-for score_vec in score_list:
-    agg_score_vec = [default_aggregation_func(x, normalization=False, crop_agg=getattr(np, args.crop_agg)) for x in score_vec]
-    agg_score_list.append(np.array(agg_score_vec))
+    for j, bar in enumerate(bars_ids):
+        ax_ids.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 30,
+                    f"{data['ids'][j]}", ha='center', fontsize=7)
 
-final_scores = np.zeros_like(agg_score_list[0])
-for i, agg_score in enumerate(agg_score_list):
-    final_scores += agg_score * score_weights[i]
-
-# accuracy
-acc = mean_class_accuracy(final_scores, label_list[0])
-print 'Final accuracy {:02f}%'.format(acc * 100)
+plt.tight_layout(rect=[0, 0, 1, 0.94])
+plt.show()
